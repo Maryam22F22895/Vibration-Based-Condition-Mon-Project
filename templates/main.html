@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Main Page</title>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        body{
+            padding: 0;
+            display: flex;
+            justify-content: center; /* Center horizontally */
+            align-items: center; /* Center vertically */
+            background-image: url('/static/image/main.png');
+            background-size: cover;
+            background-position: top center;
+            background-repeat: no-repeat;
+            background-color: #000;
+        }
+
+        .container {
+            background-color: rgba(0, 0, 0, 0.299); /* Semi-transparent black box */
+            padding: 40px 60px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            color: #fff;
+            text-align: center;
+            width: 350px; /* Consistent width */
+        }
+
+        input, button {
+            width: 100%; /* Make input and button fill the container width */
+            padding: 10px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #f9b956;
+            color: #fff;
+            font-size: 1em;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #ff9a36;
+        }
+
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+
+    </style>
+    <script>
+        // JavaScript to validate file format
+        function validateFile() {
+            const fileInput = document.querySelector('input[name="file"]');
+            const allowedExtensions = ['csv', 'mat'];
+
+            // Check if a file is selected
+            if (fileInput.files.length === 0) {
+                alert("Please select a file to upload.");
+                return false;
+            }
+
+            // Get the file name and its extension
+            const fileName = fileInput.files[0].name;
+            const fileExtension = fileName.split('.').pop().toLowerCase();
+
+            // Check if the file extension is valid
+            if (!allowedExtensions.includes(fileExtension)) {
+                alert("Invalid file format! Please upload a .csv or .mat file.");
+                return false;
+            }
+
+            return true; // Allow form submission
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Upload Bearing Data</h1>
+        <form action="/main" method="POST" enctype="multipart/form-data" onsubmit="return validateFile()">
+            <input type="file" name="file" required><br><br>
+            <button type="submit">Upload and Diagnose</button>
+        </form>
+        <br>
+        <a href="/logout"><button>Logout</button></a>
+    </div>
+</body>
+</html>

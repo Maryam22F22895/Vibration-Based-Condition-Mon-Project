@@ -1,0 +1,196 @@
+import scipy.io 
+import seaborn as sns
+import numpy as np
+import pandas as pd
+import os
+import matplotlib.pyplot as plt
+
+for root, dirs, files in os.walk("Bach Project", topdown=False):
+    for file_name in files:
+        path = os.path.join(root, file_name)
+        print(path)
+
+path = r'Bach Project\0_load_48_KHz\7_OR3.mat'
+mat = scipy.io.loadmat(path)
+
+mat.items()
+
+list(mat.keys())
+
+key_name = list(mat.keys())[3]
+
+DE_data = mat.get(key_name)
+
+file_name
+
+fault = np.full((len(DE_data), 1), file_name[:-4])
+
+df_temp = pd.DataFrame({'DE_data':np.ravel(DE_data) , 'fault':np.ravel(fault)})
+
+df_temp
+
+plt.figure(figsize=(10,3))
+plt.plot(df_temp.iloc[:,0])
+plt.show()
+
+df=pd.DataFrame(columns=['DE_data','fault'])
+
+for root, dirs, files in os.walk("Bach Project", topdown=False):
+    for file_name in files:
+        path = os.path.join(root, file_name)
+        print(path)
+
+        mat = scipy.io.loadmat(path)
+
+        key_name = list(mat.keys())[3]
+        DE_data = mat.get(key_name)
+        fault = np.full((len(DE_data), 1), file_name[:-4])
+
+        df_temp = pd.DataFrame({'DE_data':np.ravel(DE_data) , 'fault':np.ravel(fault)})
+        
+        df = pd.concat([df,df_temp],axis=0)
+        print(df['fault'].unique())
+        
+df.to_csv('all_faults.csv',index=False)    
+
+df = pd.read_csv('all_faults.csv')
+
+df
+
+faults = df['fault'].unique()
+for  f in faults:
+    plt.figure(figsize=(10,3))
+    plt.plot(df[df['fault']==f].iloc[:,0])
+    plt.title(f)
+    plt.show()
+
+plt.figure(figsize=(15,5))
+sns.scatterplot(data=df.iloc[::100,:],y='DE_data',x=np.arange(0,len(df),100),hue='fault')
+plt.show()
+
+df = pd.read_csv('all_faults.csv')
+
+df
+
+from sklearn.preprocessing import LabelEncoder
+from tensorflow.keras.utils import to_categorical
+
+win_len = 500
+stride = 300
+
+X = []
+Y = []
+
+for k in df['fault'].unique():
+    df_temp_2 = df[df['fault'] == k]
+    for i in np.arange(0, len(df_temp_2) - (win_len), stride):
+        temp = df_temp_2.iloc[i:i + win_len, :-1].values
+        temp = temp.reshape((1, -1))
+        X.append(temp)
+        Y.append(df_temp_2.iloc[i + win_len, -1])
+
+X = np.array(X)
+X = X.reshape((X.shape[0], -1, 1))
+
+Y = np.array(Y)
+encoder = LabelEncoder()
+encoder.fit(Y)
+encoded_Y = encoder.transform(Y)
+OHE_Y = to_categorical(encoded_Y)
+
+X.shape
+
+from sklearn.model_selection import train_test_split
+X_train,X_test,y_train,y_test = train_test_split(X,OHE_Y,test_size=0.3,shuffle=True)
+
+from tensorflow.keras.models import Sequential,Model
+from tensorflow.keras.layers import Input,Dense,Dropout,Flatten
+from tensorflow.keras.layers import Conv2D,MaxPooling2D,Conv1D,MaxPooling1D
+
+no_classes = len(df['fault'].unique())
+
+cnn_model = Sequential()
+cnn_model.add(Conv1D(filters=64, kernel_size=100, activation='relu', input_shape=(X.shape[1],X.shape[2])))
+cnn_model.add(Conv1D(filters=32, kernel_size=50, activation='relu'))
+
+cnn_model.add(MaxPooling1D(pool_size=4))
+cnn_model.add(Flatten())
+cnn_model.add(Dense(100,activation='relu'))
+cnn_model.add(Dense(no_classes, activation='softmax'))
+
+cnn_model.summary()
+cnn_model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+batch_size=300
+epochs=20
+history=cnn_model.fit(X_train, y_train, batch_size=batch_size, epochs=epochs, verbose=1, validation_data=(X_test, y_test), shuffle=True)
+
+def inv_Transform_result(y_pred):
+    y_pred = y_pred.argmax(axis=1)
+    y_pred = encoder.inverse_transform(y_pred)
+    return y_pred
+
+y_pred=cnn_model.predict(X_test)
+
+Y_pred=inv_Transform_result(y_pred)
+Y_test=inv_Transform_result(y_test)
+
+from sklearn.metrics import confusion_matrix
+
+plt.figure(figsize=(10,10))
+cm = confusion_matrix(Y_test, Y_pred, normalize='true')
+f = sns.heatmap(cm, annot=True, xticklabels=encoder.classes_,yticklabels=encoder.classes_)
+plt.show()
+
+from sklearn.metrics import roc_curve, auc
+from sklearn.preprocessing import label_binarize
+# Binarize the labels for multi-class ROC
+Y_test_bin = label_binarize(Y_test, classes=encoder.classes_)
+n_classes = Y_test_bin.shape[1]
+y_pred_prob = cnn_model.predict(X_test)
+# Compute ROC curve and ROC area for each class
+fpr = {}
+tpr = {}
+roc_auc = {}
+for i in range(n_classes):
+   fpr[i], tpr[i], _ = roc_curve(Y_test_bin[:, i], y_pred_prob[:, i])
+   roc_auc[i] = auc(fpr[i], tpr[i])
+# Plot ROC curves for each class
+plt.figure(figsize=(10, 8))
+for i in range(n_classes):
+   plt.plot(fpr[i], tpr[i], label=f'Class {encoder.classes_[i]} (AUC = {roc_auc[i]:.2f})')
+plt.plot([0, 1], [0, 1], 'k--', lw=2)  # Diagonal line
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic (ROC) Curve')
+plt.legend(loc="lower right")
+plt.grid()
+plt.show()
+
+dummy_cnn = Model(inputs=cnn_model.input,outputs=cnn_model.layers[-2].output)
+y_viz = dummy_cnn.predict(X_train)
+
+np.shape(y_viz)
+
+from sklearn.manifold import TSNE
+
+X_t_sne = TSNE(n_components=2, learning_rate='auto', verbose=1, perplexity=40, n_iter=300).fit_transform(y_viz)
+
+tSNEdf=pd.DataFrame(data = X_t_sne, columns=['T-SNE component 1', 'T-SNE component 2'])
+
+tSNEdf['Fault']=inv_Transform_result(y_train)
+
+
+fig, ax = plt.subplots(figsize=(10,10))
+sns.scatterplot(x=tSNEdf['T-SNE component 1'], y=tSNEdf['T-SNE component 2'], hue='Fault',
+                data=tSNEdf,
+                legend="full",
+                alpha=0.3)
+plt.show() 
+
+cnn_model.save("cnn_model.h5")
+
+import pickle
+
+with open("label_encoder.pkl", "wb") as f:
+    pickle.dump(encoder, f)
